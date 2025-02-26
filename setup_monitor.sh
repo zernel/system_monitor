@@ -32,7 +32,7 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "Creating .env file from template..."
     cp "$ENV_EXAMPLE" "$ENV_FILE"
     echo "Please edit $ENV_FILE to set your Feishu webhook URL:"
-    echo "nano $ENV_FILE"
+    echo "vim $ENV_FILE"
     read -p "Press Enter to continue after editing the .env file..."
 else
     echo "Using existing .env file."
@@ -57,4 +57,4 @@ echo "Setup complete! Server monitoring is now active and will check resources e
 echo "Log file: $LOG_FILE"
 echo "Environment configuration: $ENV_FILE"
 echo ""
-echo "You can edit the environment settings anytime by running: nano $ENV_FILE"
+echo "You can edit the environment settings anytime by running: vim $ENV_FILE"
