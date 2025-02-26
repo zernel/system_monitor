@@ -132,7 +132,7 @@ def send_feishu_alert(alerts, stats):
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": f"The following resources have exceeded thresholds for {CONFIG['check_count']} consecutive checks:\n\n{alert_details}{top_processes}"
+                        "content": f"The following resources have exceeded thresholds for {CONFIG['check_count']} consecutive checks:\n{alert_details}{top_processes}"
                     }
                 },
                 {
