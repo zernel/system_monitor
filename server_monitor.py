@@ -8,21 +8,25 @@ import logging
 import psutil
 import requests
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 # Configuration
 CONFIG = {
-    'webhook_url': 'YOUR_FEISHU_WEBHOOK_URL',  # Replace with your Feishu webhook URL
+    'webhook_url': os.environ.get('FEISHU_WEBHOOK_URL', ''),  # Get webhook URL from environment variable
     'thresholds': {
-        'memory_percent': 85.0,  # Alert when memory usage exceeds 85%
-        'cpu_percent': 90.0,     # Alert when CPU usage exceeds 90%
-        'disk_percent': 90.0,    # Alert when disk usage exceeds 90%
-        'swap_percent': 80.0     # Alert when swap usage exceeds 80%
+        'memory_percent': float(os.environ.get('THRESHOLD_MEMORY', '85.0')),
+        'cpu_percent': float(os.environ.get('THRESHOLD_CPU', '90.0')),
+        'disk_percent': float(os.environ.get('THRESHOLD_DISK', '90.0')),
+        'swap_percent': float(os.environ.get('THRESHOLD_SWAP', '80.0'))
     },
-    'check_interval': 60,  # Seconds between checks during a single run
-    'check_count': 3,      # Number of consecutive checks before alerting
-    'hostname': os.uname()[1],
-    'log_file': '/var/log/server_monitor.log',
-    'test_mode': False     # Set to True for testing without sending actual alerts
+    'check_interval': int(os.environ.get('CHECK_INTERVAL', '60')),
+    'check_count': int(os.environ.get('CHECK_COUNT', '3')),
+    'hostname': os.environ.get('CUSTOM_HOSTNAME', os.uname()[1]),
+    'log_file': os.environ.get('LOG_FILE', '/var/log/server_monitor.log'),
+    'test_mode': False
 }
 
 # Setup logging
@@ -82,6 +86,11 @@ def check_resource_issues():
 def send_feishu_alert(alerts, stats):
     """Send alert to Feishu webhook"""
     if not alerts:
+        return
+    
+    # Check if webhook URL is configured
+    if not CONFIG['webhook_url']:
+        logger.error("Feishu webhook URL not configured. Set the FEISHU_WEBHOOK_URL environment variable.")
         return
     
     # Format alert message for Feishu
@@ -177,6 +186,10 @@ def main():
         if len(sys.argv) > 1 and sys.argv[1] == "--test":
             CONFIG['test_mode'] = True
             logger.info("Running in TEST MODE")
+        
+        # Validate configuration
+        if not CONFIG['webhook_url'] and not CONFIG['test_mode']:
+            logger.warning("No Feishu webhook URL configured. Set the FEISHU_WEBHOOK_URL environment variable.")
         
         alerts, stats = check_resource_issues()
         if alerts:
