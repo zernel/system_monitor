@@ -4,7 +4,10 @@ This system monitors server resources and sends alerts to Feishu when thresholds
 
 ## Setup
 
-1. Clone this repository to your server
+1. Clone this repository to your server, or use rsync to copy the files:
+   ```bash
+    rsync -avz --exclude='.git' --exclude='.DS_Store' ./ ubuntu@your_server:/home/ubuntu/system_monitor/
+   ```
 2. Run the setup script:
    ```bash
    chmod +x setup_monitor.sh
