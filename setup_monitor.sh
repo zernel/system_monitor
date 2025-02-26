@@ -5,6 +5,8 @@ set -e
 # Script location
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 MONITOR_SCRIPT="$SCRIPT_DIR/server_monitor.py"
+ENV_EXAMPLE="$SCRIPT_DIR/.env.example"
+ENV_FILE="$SCRIPT_DIR/.env"
 LOG_FILE="/var/log/server_monitor.log"
 
 echo "Setting up server monitoring..."
@@ -16,7 +18,7 @@ sudo apt-get install -y python3 python3-pip
 
 # Install Python dependencies
 echo "Installing Python requirements..."
-sudo pip3 install psutil requests
+sudo pip3 install psutil requests python-dotenv
 
 # Make script executable
 sudo chmod +x "$MONITOR_SCRIPT"
@@ -25,17 +27,34 @@ sudo chmod +x "$MONITOR_SCRIPT"
 sudo touch "$LOG_FILE"
 sudo chmod 644 "$LOG_FILE"
 
+# Create .env file if it doesn't exist
+if [ ! -f "$ENV_FILE" ]; then
+    echo "Creating .env file from template..."
+    cp "$ENV_EXAMPLE" "$ENV_FILE"
+    echo "Please edit $ENV_FILE to set your Feishu webhook URL:"
+    echo "nano $ENV_FILE"
+    read -p "Press Enter to continue after editing the .env file..."
+else
+    echo "Using existing .env file."
+fi
+
 # Set up cron job to run every 10 minutes
 echo "Setting up cron job..."
-CRON_JOB="*/10 * * * * $MONITOR_SCRIPT >> $LOG_FILE 2>&1"
+CRON_JOB="*/10 * * * * cd $SCRIPT_DIR && $MONITOR_SCRIPT >> $LOG_FILE 2>&1"
 (crontab -l 2>/dev/null || echo "") | grep -v "$MONITOR_SCRIPT" | { cat; echo "$CRON_JOB"; } | crontab -
 
-echo "Testing the script..."
-# Run the script in test mode
-sudo python3 "$MONITOR_SCRIPT" --test
+# Check if webhook URL is configured
+if grep -q "your-webhook-token-here" "$ENV_FILE"; then
+    echo "WARNING: You need to update the Feishu webhook URL in $ENV_FILE"
+    echo "Please edit the file and replace the placeholder with your actual webhook URL."
+else
+    echo "Testing the script..."
+    # Run the script in test mode
+    sudo python3 "$MONITOR_SCRIPT" --test
+fi
 
 echo "Setup complete! Server monitoring is now active and will check resources every 10 minutes."
 echo "Log file: $LOG_FILE"
+echo "Environment configuration: $ENV_FILE"
 echo ""
-echo "Remember to update the webhook URL in the script with your Feishu webhook URL."
-echo "You can edit it by running: sudo nano $MONITOR_SCRIPT"
+echo "You can edit the environment settings anytime by running: nano $ENV_FILE"

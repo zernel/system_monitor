@@ -12,7 +12,8 @@ This system monitors server resources and sends alerts to Feishu when thresholds
    ```
 3. When prompted, edit the `.env` file to configure your Feishu webhook URL:
    ```bash
-   nano .env
+   cp .env.example .env
+   vim .env
    ```
 4. The system will automatically start monitoring and send test alerts if configured properly
 
@@ -33,7 +34,7 @@ All configuration is managed through environment variables in the `.env` file:
 You can edit the `.env` file anytime to change these settings:
 
 ```bash
-nano /path/to/system_monitor/.env
+vim /path/to/system_monitor/.env
 ```
 
 ## Safe Debugging
