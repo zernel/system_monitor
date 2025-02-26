@@ -29,16 +29,25 @@ CONFIG = {
     'test_mode': False
 }
 
-# Setup logging
+# Setup logging - MODIFIED to prevent duplicate logs
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(CONFIG['log_file']),
-        logging.StreamHandler()
-    ]
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger()
+
+# Clear any existing handlers
+for handler in logger.handlers[:]:
+    logger.removeHandler(handler)
+
+# Add only the appropriate handlers based on execution context
+if os.environ.get('RUNNING_FROM_CRON') == 'true':
+    # When running from cron, only use file handler as stdout is redirected to the file anyway
+    logger.addHandler(logging.FileHandler(CONFIG['log_file']))
+else:
+    # Interactive mode - add both handlers
+    logger.addHandler(logging.FileHandler(CONFIG['log_file']))
+    logger.addHandler(logging.StreamHandler())
 
 def get_system_stats():
     """Get current system resource usage stats"""

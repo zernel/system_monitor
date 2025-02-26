@@ -38,9 +38,9 @@ else
     echo "Using existing .env file."
 fi
 
-# Set up cron job to run every 10 minutes
+# Set up cron job to run every 30 minutes with environment flag
 echo "Setting up cron job..."
-CRON_JOB="*/10 * * * * cd $SCRIPT_DIR && $MONITOR_SCRIPT >> $LOG_FILE 2>&1"
+CRON_JOB="*/30 * * * * cd $SCRIPT_DIR && RUNNING_FROM_CRON=true $MONITOR_SCRIPT >> $LOG_FILE 2>&1"
 (crontab -l 2>/dev/null || echo "") | grep -v "$MONITOR_SCRIPT" | { cat; echo "$CRON_JOB"; } | crontab -
 
 # Check if webhook URL is configured
