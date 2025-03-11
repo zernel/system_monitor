@@ -7,6 +7,7 @@ import time
 import logging
 import psutil
 import requests
+import subprocess
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -26,7 +27,9 @@ CONFIG = {
     'check_count': int(os.environ.get('CHECK_COUNT', '3')),
     'hostname': os.environ.get('CUSTOM_HOSTNAME', os.uname()[1]),
     'log_file': os.environ.get('LOG_FILE', '/var/log/server_monitor.log'),
-    'test_mode': False
+    'test_mode': False,
+    'recovery_commands': os.environ.get('RECOVERY_COMMANDS', '').strip(),
+    'recovery_wait_time': int(os.environ.get('RECOVERY_WAIT_TIME', '10'))
 }
 
 # Setup logging - MODIFIED to prevent duplicate logs
@@ -92,9 +95,43 @@ def check_resource_issues():
     
     return alerts, get_system_stats()
 
-def send_feishu_alert(alerts, stats):
+def execute_recovery_commands():
+    """Execute recovery commands and return results"""
+    if not CONFIG['recovery_commands']:
+        logger.info("No recovery commands configured")
+        return "No recovery commands configured", False
+    
+    logger.info(f"Executing recovery commands: {CONFIG['recovery_commands']}")
+    
+    if CONFIG['test_mode']:
+        logger.info("TEST MODE: Would execute recovery commands")
+        return CONFIG['recovery_commands'], True
+    
+    results = []
+    success = True
+    
+    # Split and execute multiple commands
+    commands = CONFIG['recovery_commands'].split(';')
+    for cmd in commands:
+        cmd = cmd.strip()
+        if not cmd:
+            continue
+            
+        try:
+            logger.info(f"Executing command: {cmd}")
+            result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+            results.append(f"✅ {cmd}")
+            logger.info(f"Command executed successfully: {cmd}")
+        except subprocess.CalledProcessError as e:
+            results.append(f"❌ {cmd} (Error: {str(e)})")
+            logger.error(f"Failed to execute command: {cmd}, error: {str(e)}")
+            success = False
+    
+    return "\n".join(results), success
+
+def send_feishu_alert(alerts, stats, is_recovery_check=False, recovery_results=None):
     """Send alert to Feishu webhook"""
-    if not alerts:
+    if not alerts and not is_recovery_check:
         return
     
     # Check if webhook URL is configured
@@ -102,11 +139,35 @@ def send_feishu_alert(alerts, stats):
         logger.error("Feishu webhook URL not configured. Set the FEISHU_WEBHOOK_URL environment variable.")
         return
     
-    # Format alert message for Feishu
-    alert_details = "\n".join([
-        f"• {a['resource'].replace('_', ' ').title()}: {a['value']:.1f}% (threshold: {a['threshold']}%)"
-        for a in alerts
-    ])
+    # Set different title and content based on notification type
+    if is_recovery_check:
+        if not alerts:
+            title = f"✅ Services Recovered - {CONFIG['hostname']}"
+            header_template = "green"
+            content_prefix = "System resources have returned to normal levels!"
+        else:
+            title = f"⚠️ Services Still Affected - {CONFIG['hostname']}"
+            header_template = "orange"
+            content_prefix = "System resources are still exceeding thresholds after recovery attempts:"
+            
+        alert_details = "\n".join([
+            f"• {a['resource'].replace('_', ' ').title()}: {a['value']:.1f}% (threshold: {a['threshold']}%)"
+            for a in alerts
+        ]) if alerts else ""
+        
+        recovery_info = f"\n\n**Recovery Commands Executed:**\n{recovery_results}" if recovery_results else ""
+        
+    else:
+        title = f"❗ Resource Alert - {CONFIG['hostname']}"
+        header_template = "red"
+        content_prefix = f"The following resources have exceeded thresholds for {CONFIG['check_count']} consecutive checks:"
+        
+        alert_details = "\n".join([
+            f"• {a['resource'].replace('_', ' ').title()}: {a['value']:.1f}% (threshold: {a['threshold']}%)"
+            for a in alerts
+        ])
+        
+        recovery_info = f"\n\n**Recovery Commands to Execute:**\n{CONFIG['recovery_commands']}" if CONFIG['recovery_commands'] else ""
     
     # Get process information for high memory usage case
     top_processes = ""
@@ -132,16 +193,16 @@ def send_feishu_alert(alerts, stats):
             "header": {
                 "title": {
                     "tag": "plain_text",
-                    "content": f"❗ Server Resource Alert - {CONFIG['hostname']}"
+                    "content": title
                 },
-                "template": "red"
+                "template": header_template
             },
             "elements": [
                 {
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": f"The following resources have exceeded thresholds for {CONFIG['check_count']} consecutive checks:\n{alert_details}{top_processes}"
+                        "content": f"{content_prefix}\n{alert_details}{recovery_info}{top_processes}"
                     }
                 },
                 {
@@ -204,6 +265,20 @@ def main():
         if alerts:
             logger.warning(f"Resource alerts triggered: {alerts}")
             send_feishu_alert(alerts, stats)
+            
+            # Execute recovery commands if configured
+            if CONFIG['recovery_commands']:
+                recovery_results, success = execute_recovery_commands()
+                
+                # Wait for specified time
+                logger.info(f"Waiting {CONFIG['recovery_wait_time']} seconds for recovery...")
+                time.sleep(CONFIG['recovery_wait_time'])
+                
+                # Recheck resource status
+                recovery_alerts, recovery_stats = check_resource_issues()
+                
+                # Send recovery status notification
+                send_feishu_alert(recovery_alerts, recovery_stats, is_recovery_check=True, recovery_results=recovery_results)
         else:
             logger.info("No resource issues detected")
             
