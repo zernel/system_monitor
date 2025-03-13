@@ -31,7 +31,7 @@ sudo chmod 644 "$LOG_FILE"
 if [ ! -f "$ENV_FILE" ]; then
     echo "Creating .env file from template..."
     cp "$ENV_EXAMPLE" "$ENV_FILE"
-    echo "Please edit $ENV_FILE to set your Feishu webhook URL:"
+    echo "Please edit $ENV_FILE to set at least one notification webhook URL:"
     echo "vim $ENV_FILE"
     read -p "Press Enter to continue after editing the .env file..."
 else
@@ -43,17 +43,17 @@ echo "Setting up cron job..."
 CRON_JOB="*/30 * * * * cd $SCRIPT_DIR && RUNNING_FROM_CRON=true python3 $MONITOR_SCRIPT >> $LOG_FILE 2>&1"
 (crontab -l 2>/dev/null || echo "") | grep -v "$MONITOR_SCRIPT" | { cat; echo "$CRON_JOB"; } | crontab -
 
-# Check if webhook URL is configured
-if grep -q "your-webhook-token-here" "$ENV_FILE"; then
-    echo "WARNING: You need to update the Feishu webhook URL in $ENV_FILE"
-    echo "Please edit the file and replace the placeholder with your actual webhook URL."
+# Check if any webhook URL is configured
+if ! grep -q -E "^(FEISHU|SLACK|MATTERMOST)_WEBHOOK_URL=.+" "$ENV_FILE" || grep -q "your-webhook-token-here" "$ENV_FILE"; then
+    echo "WARNING: You need to configure at least one notification webhook URL in $ENV_FILE"
+    echo "Please edit the file and update the webhook URL for Feishu, Slack, or Mattermost."
 else
     echo "Testing the script..."
     # Run the script in test mode
     sudo python3 "$MONITOR_SCRIPT" --test
 fi
 
-echo "Setup complete! Server monitoring is now active and will check resources every 10 minutes."
+echo "Setup complete! Server monitoring is now active and will check resources every 30 minutes."
 echo "Log file: $LOG_FILE"
 echo "Environment configuration: $ENV_FILE"
 echo ""

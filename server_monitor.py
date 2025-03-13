@@ -16,7 +16,9 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 # Configuration
 CONFIG = {
-    'webhook_url': os.environ.get('FEISHU_WEBHOOK_URL', ''),  # Get webhook URL from environment variable
+    'feishu_webhook_url': os.environ.get('FEISHU_WEBHOOK_URL', ''),  # Feishu webhook
+    'slack_webhook_url': os.environ.get('SLACK_WEBHOOK_URL', ''),    # Slack webhook
+    'mattermost_webhook_url': os.environ.get('MATTERMOST_WEBHOOK_URL', ''),  # Mattermost webhook
     'thresholds': {
         'memory_percent': float(os.environ.get('THRESHOLD_MEMORY', '85.0')),
         'cpu_percent': float(os.environ.get('THRESHOLD_CPU', '90.0')),
@@ -129,16 +131,13 @@ def execute_recovery_commands():
     
     return "\n".join(results), success
 
-def send_feishu_alert(alerts, stats, is_recovery_check=False, recovery_results=None):
+def send_feishu_notification(alerts, stats, is_recovery_check=False, recovery_results=None):
     """Send alert to Feishu webhook"""
-    if not alerts and not is_recovery_check:
-        return
-    
-    # Check if webhook URL is configured
-    if not CONFIG['webhook_url']:
-        logger.error("Feishu webhook URL not configured. Set the FEISHU_WEBHOOK_URL environment variable.")
-        return
-    
+    # Skip if webhook not configured
+    if not CONFIG['feishu_webhook_url']:
+        logger.info("Feishu webhook URL not configured, skipping notification")
+        return False
+
     # Set different title and content based on notification type
     if is_recovery_check:
         if not alerts:
@@ -232,20 +231,255 @@ def send_feishu_alert(alerts, stats, is_recovery_check=False, recovery_results=N
     if CONFIG['test_mode']:
         logger.info("TEST MODE: Would send this alert to Feishu:")
         logger.info(json.dumps(message, indent=2))
-        return
+        return True
     
     try:
         response = requests.post(
-            CONFIG['webhook_url'],
+            CONFIG['feishu_webhook_url'],
             headers={"Content-Type": "application/json"},
             data=json.dumps(message)
         )
         if response.status_code == 200:
             logger.info("Alert sent to Feishu successfully")
+            return True
         else:
             logger.error(f"Failed to send alert to Feishu: {response.status_code} {response.text}")
+            return False
     except Exception as e:
         logger.error(f"Error sending alert to Feishu: {str(e)}")
+        return False
+
+def send_slack_notification(alerts, stats, is_recovery_check=False, recovery_results=None):
+    """Send alert to Slack webhook"""
+    # Skip if webhook not configured
+    if not CONFIG['slack_webhook_url']:
+        logger.info("Slack webhook URL not configured, skipping notification")
+        return False
+    
+    # Set message header based on notification type
+    if is_recovery_check:
+        if not alerts:
+            header = f"✅ *Services Recovered - {CONFIG['hostname']}*"
+            content_prefix = "System resources have returned to normal levels!"
+        else:
+            header = f"⚠️ *Services Still Affected - {CONFIG['hostname']}*"
+            content_prefix = "System resources are still exceeding thresholds after recovery attempts:"
+    else:
+        header = f"❗ *Resource Alert - {CONFIG['hostname']}*"
+        content_prefix = f"The following resources have exceeded thresholds for {CONFIG['check_count']} consecutive checks:"
+
+    # Format alert details
+    alert_details = ""
+    if alerts:
+        alert_details = "\n".join([
+            f"• {a['resource'].replace('_', ' ').title()}: {a['value']:.1f}% (threshold: {a['threshold']}%)"
+            for a in alerts
+        ])
+    
+    # Add recovery information if applicable
+    recovery_info = ""
+    if is_recovery_check and recovery_results:
+        recovery_info = f"\n\n*Recovery Commands Executed:*\n{recovery_results}"
+    elif not is_recovery_check and CONFIG['recovery_commands']:
+        recovery_info = f"\n\n*Recovery Commands to Execute:*\n{CONFIG['recovery_commands']}"
+    
+    # Add process information for high memory usage
+    top_processes = ""
+    if any(a['resource'] == 'memory_percent' for a in alerts):
+        processes = sorted(
+            [p for p in psutil.process_iter(['pid', 'name', 'memory_percent', 'cpu_percent'])],
+            key=lambda p: p.info['memory_percent'],
+            reverse=True
+        )[:5]
+        
+        top_processes = "\n\n*Top Memory Processes:*\n" + "\n".join([
+            f"• {p.info['name']} (PID {p.info['pid']}): Memory {p.info['memory_percent']:.1f}%, CPU {p.info['cpu_percent']:.1f}%"
+            for p in processes
+        ])
+    
+    # Build system stats section
+    system_stats = (
+        f"*Current System Stats:*\n"
+        f"• Memory: {stats['memory_percent']:.1f}%\n"
+        f"• CPU: {stats['cpu_percent']:.1f}%\n"
+        f"• Swap: {stats['swap_percent']:.1f}%\n"
+        f"• Disk: {stats['disk_percent']:.1f}%\n\n"
+        f"_Alert Time: {stats['timestamp']}_"
+    )
+    
+    # Create Slack message payload
+    message = {
+        "text": f"Server Monitor Alert - {CONFIG['hostname']}",
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": header
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"{content_prefix}\n{alert_details}{recovery_info}{top_processes}"
+                }
+            },
+            {
+                "type": "divider"
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": system_stats
+                }
+            }
+        ]
+    }
+    
+    # Send to Slack
+    if CONFIG['test_mode']:
+        logger.info("TEST MODE: Would send this alert to Slack:")
+        logger.info(json.dumps(message, indent=2))
+        return True
+    
+    try:
+        response = requests.post(
+            CONFIG['slack_webhook_url'],
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(message)
+        )
+        if response.status_code == 200:
+            logger.info("Alert sent to Slack successfully")
+            return True
+        else:
+            logger.error(f"Failed to send alert to Slack: {response.status_code} {response.text}")
+            return False
+    except Exception as e:
+        logger.error(f"Error sending alert to Slack: {str(e)}")
+        return False
+
+def send_mattermost_notification(alerts, stats, is_recovery_check=False, recovery_results=None):
+    """Send alert to Mattermost webhook"""
+    # Skip if webhook not configured
+    if not CONFIG['mattermost_webhook_url']:
+        logger.info("Mattermost webhook URL not configured, skipping notification")
+        return False
+    
+    # Set message header based on notification type
+    if is_recovery_check:
+        if not alerts:
+            header = f"#### :white_check_mark: Services Recovered - {CONFIG['hostname']}"
+            content_prefix = "System resources have returned to normal levels!"
+        else:
+            header = f"#### :warning: Services Still Affected - {CONFIG['hostname']}"
+            content_prefix = "System resources are still exceeding thresholds after recovery attempts:"
+    else:
+        header = f"#### :rotating_light: Resource Alert - {CONFIG['hostname']}"
+        content_prefix = f"The following resources have exceeded thresholds for {CONFIG['check_count']} consecutive checks:"
+
+    # Format alert details
+    alert_details = ""
+    if alerts:
+        alert_details = "\n" + "\n".join([
+            f"* {a['resource'].replace('_', ' ').title()}: {a['value']:.1f}% (threshold: {a['threshold']}%)"
+            for a in alerts
+        ])
+    
+    # Add recovery information if applicable
+    recovery_info = ""
+    if is_recovery_check and recovery_results:
+        recovery_info = f"\n\n**Recovery Commands Executed:**\n```\n{recovery_results}\n```"
+    elif not is_recovery_check and CONFIG['recovery_commands']:
+        recovery_info = f"\n\n**Recovery Commands to Execute:**\n```\n{CONFIG['recovery_commands']}\n```"
+    
+    # Add process information for high memory usage
+    top_processes = ""
+    if any(a['resource'] == 'memory_percent' for a in alerts):
+        processes = sorted(
+            [p for p in psutil.process_iter(['pid', 'name', 'memory_percent', 'cpu_percent'])],
+            key=lambda p: p.info['memory_percent'],
+            reverse=True
+        )[:5]
+        
+        process_list = "\n" + "\n".join([
+            f"* {p.info['name']} (PID {p.info['pid']}): Memory {p.info['memory_percent']:.1f}%, CPU {p.info['cpu_percent']:.1f}%"
+            for p in processes
+        ])
+        top_processes = f"\n\n**Top Memory Processes:**{process_list}"
+    
+    # Build system stats section
+    system_stats = (
+        f"**Current System Stats:**\n"
+        f"* Memory: {stats['memory_percent']:.1f}%\n"
+        f"* CPU: {stats['cpu_percent']:.1f}%\n"
+        f"* Swap: {stats['swap_percent']:.1f}%\n"
+        f"* Disk: {stats['disk_percent']:.1f}%\n\n"
+        f"*Alert Time: {stats['timestamp']}*"
+    )
+    
+    # Create Mattermost message text
+    text = (
+        f"{header}\n\n"
+        f"{content_prefix}{alert_details}{recovery_info}{top_processes}\n\n"
+        f"---\n\n"
+        f"{system_stats}"
+    )
+    
+    # Create message payload
+    message = {
+        "text": text
+    }
+    
+    # Send to Mattermost
+    if CONFIG['test_mode']:
+        logger.info("TEST MODE: Would send this alert to Mattermost:")
+        logger.info(json.dumps(message, indent=2))
+        return True
+    
+    try:
+        response = requests.post(
+            CONFIG['mattermost_webhook_url'],
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(message)
+        )
+        if response.status_code == 200:
+            logger.info("Alert sent to Mattermost successfully")
+            return True
+        else:
+            logger.error(f"Failed to send alert to Mattermost: {response.status_code} {response.text}")
+            return False
+    except Exception as e:
+        logger.error(f"Error sending alert to Mattermost: {str(e)}")
+        return False
+
+def send_alert(alerts, stats, is_recovery_check=False, recovery_results=None):
+    """Send alerts to all configured notification channels"""
+    if not alerts and not is_recovery_check:
+        return False
+    
+    # Check if any notification channel is configured
+    if not (CONFIG['feishu_webhook_url'] or CONFIG['slack_webhook_url'] or CONFIG['mattermost_webhook_url']):
+        logger.error("No notification webhook URLs configured. Set at least one webhook URL in the environment variables.")
+        return False
+    
+    success = False
+    
+    # Send to all configured platforms
+    if CONFIG['feishu_webhook_url']:
+        if send_feishu_notification(alerts, stats, is_recovery_check, recovery_results):
+            success = True
+    
+    if CONFIG['slack_webhook_url']:
+        if send_slack_notification(alerts, stats, is_recovery_check, recovery_results):
+            success = True
+    
+    if CONFIG['mattermost_webhook_url']:
+        if send_mattermost_notification(alerts, stats, is_recovery_check, recovery_results):
+            success = True
+    
+    return success
 
 def main():
     """Main function to check resources and send alerts if needed"""
@@ -258,13 +492,13 @@ def main():
             logger.info("Running in TEST MODE")
         
         # Validate configuration
-        if not CONFIG['webhook_url'] and not CONFIG['test_mode']:
-            logger.warning("No Feishu webhook URL configured. Set the FEISHU_WEBHOOK_URL environment variable.")
+        if not (CONFIG['feishu_webhook_url'] or CONFIG['slack_webhook_url'] or CONFIG['mattermost_webhook_url']) and not CONFIG['test_mode']:
+            logger.warning("No notification webhook URLs configured. Set at least one webhook URL in the environment variables.")
         
         alerts, stats = check_resource_issues()
         if alerts:
             logger.warning(f"Resource alerts triggered: {alerts}")
-            send_feishu_alert(alerts, stats)
+            send_alert(alerts, stats)
             
             # Execute recovery commands if configured
             if CONFIG['recovery_commands']:
@@ -278,7 +512,7 @@ def main():
                 recovery_alerts, recovery_stats = check_resource_issues()
                 
                 # Send recovery status notification
-                send_feishu_alert(recovery_alerts, recovery_stats, is_recovery_check=True, recovery_results=recovery_results)
+                send_alert(recovery_alerts, recovery_stats, is_recovery_check=True, recovery_results=recovery_results)
         else:
             logger.info("No resource issues detected")
             
