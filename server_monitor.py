@@ -34,7 +34,7 @@ CONFIG = {
     'recovery_wait_time': int(os.environ.get('RECOVERY_WAIT_TIME', '10'))
 }
 
-# Setup logging - MODIFIED to prevent duplicate logs
+# Setup logging with fallback mechanism
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -45,14 +45,46 @@ logger = logging.getLogger()
 for handler in logger.handlers[:]:
     logger.removeHandler(handler)
 
-# Add only the appropriate handlers based on execution context
-if os.environ.get('RUNNING_FROM_CRON') == 'true':
-    # When running from cron, only use file handler as stdout is redirected to the file anyway
-    logger.addHandler(logging.FileHandler(CONFIG['log_file']))
-else:
-    # Interactive mode - add both handlers
-    logger.addHandler(logging.FileHandler(CONFIG['log_file']))
-    logger.addHandler(logging.StreamHandler())
+# Try to use configured log file, fall back to user directory if permission denied
+log_file = CONFIG['log_file']
+fallback_log_file = os.path.expanduser('~/server_monitor.log')
+
+def setup_logging():
+    """Set up logging with fallback to user home directory if system log is not writable"""
+    global log_file
+    
+    try:
+        # Try to use the configured log file
+        file_handler = logging.FileHandler(log_file)
+        logger.addHandler(file_handler)
+        
+        # Add console handler if not running from cron
+        if os.environ.get('RUNNING_FROM_CRON') != 'true':
+            logger.addHandler(logging.StreamHandler())
+            
+        logger.info(f"Logging to {log_file}")
+        return True
+    except PermissionError:
+        # If permission denied, try to use a file in user's home directory
+        try:
+            log_file = fallback_log_file
+            file_handler = logging.FileHandler(log_file)
+            logger.addHandler(file_handler)
+            
+            # Add console handler if not running from cron
+            if os.environ.get('RUNNING_FROM_CRON') != 'true':
+                logger.addHandler(logging.StreamHandler())
+                
+            logger.warning(f"Permission denied for configured log file. Falling back to {log_file}")
+            return True
+        except Exception as e:
+            # If that also fails, use only stderr
+            logger.addHandler(logging.StreamHandler())
+            logger.error(f"Could not create any log file, using stderr only: {str(e)}")
+            return False
+
+# Initialize logging
+setup_logging()
 
 def get_system_stats():
     """Get current system resource usage stats"""

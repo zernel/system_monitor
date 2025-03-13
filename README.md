@@ -41,6 +41,7 @@ All configuration is managed through environment variables in the `.env` file:
   - `CHECK_COUNT`: Number of consecutive threshold violations before alerting (default: 3)
   - `CUSTOM_HOSTNAME`: Custom server name for alerts (default: system hostname)
   - `LOG_FILE`: Log file location (default: /var/log/server_monitor.log)
+    - Note: If the system cannot write to this location, it will automatically fall back to `~/server_monitor.log`
 
 - **Recovery Options**
   - `RECOVERY_COMMANDS`: Commands to execute when thresholds are exceeded (optional, separate multiple commands with semicolons)
@@ -128,6 +129,30 @@ The system now supports automatic recovery actions when resources exceed thresho
    - Ensure the user running the script has appropriate permissions for the recovery commands
    - Use full paths in commands to avoid path-related issues
    - Consider using sudo with NOPASSWD for specific commands if needed
+
+## Troubleshooting
+
+### Permission Issues
+
+If you encounter permission errors when running the monitoring system:
+
+1. **Log file access denied**: The system will automatically fall back to using a log file in the user's home directory (`~/server_monitor.log`) if it cannot write to the configured system log file.
+
+2. **Setup with limited privileges**: If running the setup script without sudo access to system directories, the script will automatically configure an alternative log file location in your home directory.
+
+3. **Manual permission fix**: If you want to use the system log directory but get permission errors:
+   ```bash
+   # Make the log file writable by all users (less secure, but simple)
+   sudo touch /var/log/server_monitor.log
+   sudo chmod 666 /var/log/server_monitor.log
+   
+   # OR, more secure option: add your user to the appropriate group
+   sudo touch /var/log/server_monitor.log
+   sudo chown root:adm /var/log/server_monitor.log
+   sudo chmod 664 /var/log/server_monitor.log
+   sudo usermod -a -G adm your-username
+   # Then log out and back in for group changes to take effect
+   ```
 
 ## Maintenance
 

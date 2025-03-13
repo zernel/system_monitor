@@ -7,7 +7,8 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 MONITOR_SCRIPT="$SCRIPT_DIR/server_monitor.py"
 ENV_EXAMPLE="$SCRIPT_DIR/.env.example"
 ENV_FILE="$SCRIPT_DIR/.env"
-LOG_FILE="/var/log/server_monitor.log"
+DEFAULT_LOG_FILE="/var/log/server_monitor.log"
+FALLBACK_LOG_FILE="$HOME/server_monitor.log"
 
 # Function to ensure all required files have correct permissions
 ensure_permissions() {
@@ -21,6 +22,39 @@ ensure_permissions() {
     fi
     
     echo "Permissions set successfully."
+}
+
+# Function to set up the log file with appropriate permissions
+setup_log_file() {
+    # Get log file location from .env if available
+    if [ -f "$ENV_FILE" ]; then
+        LOG_FILE_ENV=$(grep -E "^LOG_FILE=" "$ENV_FILE" | cut -d= -f2)
+        if [ -n "$LOG_FILE_ENV" ]; then
+            DEFAULT_LOG_FILE="$LOG_FILE_ENV"
+        fi
+    fi
+    
+    # Try to create system log file, fall back to user directory if we can't
+    if sudo touch "$DEFAULT_LOG_FILE" 2>/dev/null && sudo chmod 666 "$DEFAULT_LOG_FILE" 2>/dev/null; then
+        echo "Successfully created log file: $DEFAULT_LOG_FILE (with global write permissions)"
+        LOG_FILE="$DEFAULT_LOG_FILE"
+    else
+        echo "Could not create log file in system directory. Using user directory: $FALLBACK_LOG_FILE"
+        touch "$FALLBACK_LOG_FILE"
+        chmod 644 "$FALLBACK_LOG_FILE"
+        LOG_FILE="$FALLBACK_LOG_FILE"
+        
+        # Update .env file with new log location if needed
+        if [ -f "$ENV_FILE" ]; then
+            if grep -q "^LOG_FILE=" "$ENV_FILE"; then
+                sed -i "s|^LOG_FILE=.*|LOG_FILE=$FALLBACK_LOG_FILE|" "$ENV_FILE"
+            else
+                echo "LOG_FILE=$FALLBACK_LOG_FILE" >> "$ENV_FILE"
+            fi
+        fi
+    fi
+    
+    echo "Log file configured: $LOG_FILE"
 }
 
 echo "Setting up server monitoring..."
@@ -37,10 +71,6 @@ sudo apt-get install -y python3 python3-pip
 echo "Installing Python requirements..."
 sudo pip3 install psutil requests python-dotenv
 
-# Create log file and set permissions
-sudo touch "$LOG_FILE"
-sudo chmod 644 "$LOG_FILE"
-
 # Create .env file if it doesn't exist
 if [ ! -f "$ENV_FILE" ]; then
     echo "Creating .env file from template..."
@@ -51,6 +81,9 @@ if [ ! -f "$ENV_FILE" ]; then
 else
     echo "Using existing .env file."
 fi
+
+# Set up log file with appropriate permissions
+setup_log_file
 
 # Set up cron job to run every 30 minutes with environment flag
 echo "Setting up cron job..."
