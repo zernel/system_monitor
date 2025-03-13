@@ -9,7 +9,24 @@ ENV_EXAMPLE="$SCRIPT_DIR/.env.example"
 ENV_FILE="$SCRIPT_DIR/.env"
 LOG_FILE="/var/log/server_monitor.log"
 
+# Function to ensure all required files have correct permissions
+ensure_permissions() {
+    echo "Setting correct permissions for scripts..."
+    chmod +x "$SCRIPT_DIR/server_monitor.py"
+    chmod +x "$SCRIPT_DIR/setup_monitor.sh"
+    
+    # Add any other scripts that need executable permissions
+    if [ -f "$SCRIPT_DIR/update_monitor.sh" ]; then
+        chmod +x "$SCRIPT_DIR/update_monitor.sh"
+    fi
+    
+    echo "Permissions set successfully."
+}
+
 echo "Setting up server monitoring..."
+
+# Always ensure permissions are correct (helpful after rsync updates)
+ensure_permissions
 
 # Install dependencies
 echo "Installing required packages..."
@@ -19,9 +36,6 @@ sudo apt-get install -y python3 python3-pip
 # Install Python dependencies
 echo "Installing Python requirements..."
 sudo pip3 install psutil requests python-dotenv
-
-# Make script executable
-sudo chmod +x "$MONITOR_SCRIPT"
 
 # Create log file and set permissions
 sudo touch "$LOG_FILE"
@@ -58,3 +72,5 @@ echo "Log file: $LOG_FILE"
 echo "Environment configuration: $ENV_FILE"
 echo ""
 echo "You can edit the environment settings anytime by running: vim $ENV_FILE"
+echo ""
+echo "NOTE: If you update this system using rsync, run './setup_monitor.sh --update' afterward to restore proper permissions."

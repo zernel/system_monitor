@@ -135,3 +135,23 @@ The system now supports automatic recovery actions when resources exceed thresho
 - **Update thresholds** if you find they're too sensitive or not sensitive enough by editing the `.env` file
 - **Test the alert system monthly** to ensure it's functioning properly
 - **Back up your `.env` file** when making configuration changes
+
+## Updating the System
+
+When updating the monitoring system using rsync, file permissions may be reset, causing scripts to lose their executable status. To fix this:
+
+1. After updating with rsync, run the update script to restore permissions:
+   ```bash
+   cd /path/to/system_monitor/
+   chmod +x update_monitor.sh  # First make the update script itself executable
+   ./update_monitor.sh
+   ```
+
+2. Alternatively, you can run the setup script with the update flag:
+   ```bash
+   cd /path/to/system_monitor/
+   chmod +x setup_monitor.sh  # First make the setup script executable
+   ./setup_monitor.sh --update
+   ```
+
+This will ensure all scripts have the correct executable permissions after an update.
