@@ -20,6 +20,14 @@ This system monitors server resources and sends alerts to multiple notification 
    ```
 4. The system will automatically start monitoring and send test alerts if configured properly
 
+## Features
+
+- **Resource Monitoring**: Tracks CPU, memory, swap, and disk usage
+- **Network Monitoring**: Checks connectivity to external services (e.g., Google)
+- **Multiple Notification Channels**: Supports Feishu, Slack, and Mattermost
+- **Automatic Recovery**: Can execute custom commands when issues are detected
+- **Fallback Mechanisms**: Handles permission issues gracefully
+
 ## Configuration
 
 All configuration is managed through environment variables in the `.env` file:
@@ -46,6 +54,9 @@ All configuration is managed through environment variables in the `.env` file:
 - **Recovery Options**
   - `RECOVERY_COMMANDS`: Commands to execute when thresholds are exceeded (optional, separate multiple commands with semicolons)
   - `RECOVERY_WAIT_TIME`: Time to wait after executing recovery commands before rechecking resources (default: 10 seconds)
+
+- **Network Monitoring Settings**
+  - `NETWORK_CHECK_TARGET`: URL to check for network connectivity (default: https://www.google.com)
 
 You can edit the `.env` file anytime to change these settings:
 
@@ -129,6 +140,25 @@ The system now supports automatic recovery actions when resources exceed thresho
    - Ensure the user running the script has appropriate permissions for the recovery commands
    - Use full paths in commands to avoid path-related issues
    - Consider using sudo with NOPASSWD for specific commands if needed
+
+## Network Monitoring
+
+In addition to resource monitoring, the system can monitor network connectivity:
+
+1. **How it works**:
+   - The system makes an HTTP request to a target URL (default: https://www.google.com)
+   - If the request fails after multiple retries, an alert is sent
+   - The check runs every 10 minutes by default
+
+2. **Simple configuration**:
+   - Set `NETWORK_CHECK_TARGET` in your `.env` file to specify a different URL to check
+   - Example: `NETWORK_CHECK_TARGET=https://example.com`
+
+3. **Testing network monitoring**:
+   ```bash
+   cd /path/to/system_monitor/
+   python3 network_monitor.py --test
+   ```
 
 ## Troubleshooting
 

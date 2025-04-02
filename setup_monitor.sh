@@ -5,6 +5,7 @@ set -e
 # Script location
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 MONITOR_SCRIPT="$SCRIPT_DIR/server_monitor.py"
+NETWORK_SCRIPT="$SCRIPT_DIR/network_monitor.py"
 ENV_EXAMPLE="$SCRIPT_DIR/.env.example"
 ENV_FILE="$SCRIPT_DIR/.env"
 DEFAULT_LOG_FILE="/var/log/server_monitor.log"
@@ -14,6 +15,7 @@ FALLBACK_LOG_FILE="$HOME/server_monitor.log"
 ensure_permissions() {
     echo "Setting correct permissions for scripts..."
     chmod +x "$SCRIPT_DIR/server_monitor.py"
+    chmod +x "$SCRIPT_DIR/network_monitor.py"
     chmod +x "$SCRIPT_DIR/setup_monitor.sh"
     
     # Add any other scripts that need executable permissions
@@ -85,22 +87,28 @@ fi
 # Set up log file with appropriate permissions
 setup_log_file
 
-# Set up cron job to run every 30 minutes with environment flag
-echo "Setting up cron job..."
-CRON_JOB="*/30 * * * * cd $SCRIPT_DIR && RUNNING_FROM_CRON=true python3 $MONITOR_SCRIPT >> $LOG_FILE 2>&1"
-(crontab -l 2>/dev/null || echo "") | grep -v "$MONITOR_SCRIPT" | { cat; echo "$CRON_JOB"; } | crontab -
+# Set up cron jobs
+echo "Setting up cron jobs..."
+RESOURCE_CRON_JOB="*/30 * * * * cd $SCRIPT_DIR && RUNNING_FROM_CRON=true python3 $MONITOR_SCRIPT"
+NETWORK_CRON_JOB="*/10 * * * * cd $SCRIPT_DIR && RUNNING_FROM_CRON=true python3 $NETWORK_SCRIPT"
+
+# Remove old entries and add new ones
+(crontab -l 2>/dev/null || echo "") | grep -v "$MONITOR_SCRIPT" | grep -v "$NETWORK_SCRIPT" | { cat; echo "$RESOURCE_CRON_JOB"; echo "$NETWORK_CRON_JOB"; } | crontab -
 
 # Check if any webhook URL is configured
 if ! grep -q -E "^(FEISHU|SLACK|MATTERMOST)_WEBHOOK_URL=.+" "$ENV_FILE" || grep -q "your-webhook-token-here" "$ENV_FILE"; then
     echo "WARNING: You need to configure at least one notification webhook URL in $ENV_FILE"
     echo "Please edit the file and update the webhook URL for Feishu, Slack, or Mattermost."
 else
-    echo "Testing the script..."
-    # Run the script in test mode
-    sudo python3 "$MONITOR_SCRIPT" --test
+    echo "Testing the scripts..."
+    # Run the scripts in test mode
+    python3 "$MONITOR_SCRIPT" --test
+    python3 "$NETWORK_SCRIPT" --test
 fi
 
-echo "Setup complete! Server monitoring is now active and will check resources every 30 minutes."
+echo "Setup complete! Server monitoring is now active."
+echo "Resource monitoring will run every 30 minutes."
+echo "Network monitoring will run every 10 minutes."
 echo "Log file: $LOG_FILE"
 echo "Environment configuration: $ENV_FILE"
 echo ""

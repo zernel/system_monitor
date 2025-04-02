@@ -9,6 +9,7 @@ echo "Updating server monitoring system permissions..."
 
 # Ensure scripts have executable permissions
 chmod +x "$SCRIPT_DIR/server_monitor.py"
+chmod +x "$SCRIPT_DIR/network_monitor.py"
 chmod +x "$SCRIPT_DIR/setup_monitor.sh"
 chmod +x "$SCRIPT_DIR/update_monitor.sh"
 
