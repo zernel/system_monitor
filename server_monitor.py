@@ -532,8 +532,12 @@ def main():
             logger.warning(f"Resource alerts triggered: {alerts}")
             send_alert(alerts, stats)
             
-            # Execute recovery commands if configured
-            if CONFIG['recovery_commands']:
+            # Check if alerts contain memory or CPU issues
+            has_memory_cpu_issue = any(alert['resource'] in ['memory_percent', 'cpu_percent'] for alert in alerts)
+
+            # Execute recovery commands only for memory or CPU issues
+            if CONFIG['recovery_commands'] and has_memory_cpu_issue:
+                logger.info("Memory or CPU issues detected, executing recovery commands")
                 recovery_results, success = execute_recovery_commands()
                 
                 # Wait for specified time
@@ -545,6 +549,8 @@ def main():
                 
                 # Send recovery status notification
                 send_alert(recovery_alerts, recovery_stats, is_recovery_check=True, recovery_results=recovery_results)
+            elif CONFIG['recovery_commands']:
+                logger.info("Alerts do not include memory or CPU issues, skipping recovery commands")
         else:
             logger.info("No resource issues detected")
             
