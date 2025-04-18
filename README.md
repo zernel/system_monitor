@@ -210,3 +210,88 @@ When updating the monitoring system using rsync, file permissions may be reset, 
    ```
 
 This will ensure all scripts have the correct executable permissions after an update.
+
+## Log Management
+
+Ubuntu system log files (such as /var/log/syslog) can accumulate over time and potentially consume a large amount of disk space. Here are effective methods for managing system logs:
+
+### Understanding logrotate
+
+Ubuntu uses the logrotate tool by default to automatically manage and rotate log files:
+
+1. **Check current configuration**:
+   ```bash
+   cat /etc/logrotate.d/rsyslog
+   ```
+   This displays the rotation configuration for syslog and other system logs.
+
+2. **Default behavior**:
+   - Logs are typically rotated weekly
+   - Logs are kept for 4 weeks
+   - Rotated logs are compressed
+
+### Customizing Log Rotation
+
+If the default configuration doesn't meet your needs, you can customize the logrotate configuration:
+
+1. **Modify existing configuration**:
+   ```bash
+   sudo vim /etc/logrotate.d/rsyslog
+   ```
+
+2. **Configuration example** - Rotate large log files more frequently:
+   ```
+   /var/log/syslog
+   {
+       su root syslog
+       rotate 7
+       daily
+       maxsize 100M
+       missingok
+       notifempty
+       delaycompress
+       compress
+       postrotate
+           /usr/lib/rsyslog/rsyslog-rotate
+       endscript
+   }
+   ```
+   
+   - `su root syslog`: Specifies to use root user and syslog group for log rotation (resolves permission issues)
+   - `rotate 7`: Keeps 7 rotated files
+   - `daily`: Rotates logs daily
+   - `maxsize 100M`: Rotates when file exceeds 100MB, even if not yet rotation time
+
+3. **Apply new configuration**:
+   ```bash
+   sudo logrotate -f /etc/logrotate.d/rsyslog
+   ```
+
+   If you encounter a permission error like this:
+   ```
+   error: skipping "/var/log/syslog" because parent directory has insecure permissions (It's world writable or writable by group which is not "root") Set "su" directive in config file to tell logrotate which user/group should be used for rotation.
+   ```
+   
+   Make sure you've added the `su root syslog` directive to your configuration file as shown in the example above. This tells logrotate to use the root user and syslog group when performing log rotation.
+
+### Manually Handling Large Log Files
+
+If log files are already large:
+
+1. **Safely empty log files**:
+   ```bash
+   sudo truncate -s 0 /var/log/syslog
+   ```
+   This empties the file content while preserving the file itself.
+
+2. **Compress old logs**:
+   ```bash
+   sudo gzip /var/log/syslog.1
+   ```
+
+3. **Check log directory usage**:
+   ```bash
+   sudo du -sh /var/log/*
+   ```
+
+
